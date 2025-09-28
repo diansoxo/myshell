@@ -12,6 +12,8 @@ typedef enum {
     TOKEN_OR,
     TOKEN_SEMICOLON,
     TOKEN_BACKGROUND,
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
     TOKEN_EOF
 } token_type_t;
 
