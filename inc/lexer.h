@@ -1,7 +1,7 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include "ast.h"
+#include "tokens.h"
 
 typedef struct {
     const char *input;
