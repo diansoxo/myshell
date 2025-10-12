@@ -120,25 +120,25 @@ char *handle_quotes(lexer_t *lexer, char quote_type) {
 }
 
 char *handle_word(lexer_t *lexer) {
-    int start_pos = lexer->position;
     int len = 0;
     
-    while (lexer->position < lexer->length) {
-        char current = lexer->input[lexer->position];
+    int temp_pos = lexer->position;
+    while (temp_pos < lexer->length) {
+        char current = lexer->input[temp_pos];
         
         if (is_whitespace(current) || is_special_char(current)) {
             break;
         }
         
         if (current == '\\') {
-            lexer->position++;
-            if (lexer->position < lexer->length) {
+            temp_pos++;
+            if (temp_pos < lexer->length) {
                 len++;
-                lexer->position++;
+                temp_pos++;
             }
         } else {
             len++;
-            lexer->position++;
+            temp_pos++;
         }
     }
     
@@ -151,11 +151,30 @@ char *handle_word(lexer_t *lexer) {
         return NULL;
     }
     
-    strncpy(result, lexer->input + start_pos, len);
-    result[len] = '\0';
+    int i = 0;
+    while (lexer->position < lexer->length && i < len) {
+        char current = lexer->input[lexer->position];
+        
+        if (is_whitespace(current) || is_special_char(current)) {
+            break;
+        }
+        
+        if (current == '\\') {
+            lexer->position++;
+            if (lexer->position < lexer->length) {
+                result[i++] = lexer->input[lexer->position];
+                lexer->position++;
+            }
+        } else {
+            result[i++] = current;
+            lexer->position++;
+        }
+    }
     
+    result[i] = '\0';
     return result;
 }
+
 
 token_t *lexer_tokenize(lexer_t *lexer) {
     if (lexer == NULL) {
