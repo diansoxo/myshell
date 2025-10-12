@@ -4,7 +4,7 @@
 int main() {
     printf("Testing lexer...\n\n");
     
-    char *test = "ls -l | grep hello";
+    char *test ="ls\\>";
     
     lexer_t *lexer = lexer_create(test);
 
