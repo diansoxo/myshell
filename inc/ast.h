@@ -5,7 +5,7 @@
 typedef enum {
     NODE_COMMAND,
     NODE_PIPE,
-    NODE_REDIRECT,
+    NODE_REDIRECT, 
     NODE_AND,
     NODE_OR,
     NODE_SEMICOLON,
@@ -18,11 +18,9 @@ typedef struct ast_node_t {
     struct ast_node_t *left;
     struct ast_node_t *right;
     
-    // Для команд
-    char **args;
+    char **argv; 
     int argc;
     
-    // Для перенаправлений
     char *in_file;
     char *out_file;
     char *err_file;
@@ -32,6 +30,8 @@ typedef struct ast_node_t {
 
 ast_node_t *ast_create_node(node_type_t type);
 void ast_destroy(ast_node_t *node);
-ast_node_t *ast_create_command_node(char **args, int argc);
+ast_node_t *ast_create_command_node(char **argv, int argc); 
+void ast_add_redirect(ast_node_t *node, char *file, int type, int is_append);
+void ast_print(ast_node_t *node, int depth);
 
 #endif
