@@ -118,62 +118,79 @@ char *handle_quotes(lexer_t *lexer, char quote_type) {
     
     return result;
 }
+//////////////////
 
 char *handle_word(lexer_t *lexer) {
-    int len = 0;
+    int start_pos = lexer->position;
+    int end_pos = lexer->position;
     
-    int temp_pos = lexer->position;
-    while (temp_pos < lexer->length) {
-        char current = lexer->input[temp_pos];
+    // Определяем конец слова с учетом экранирования
+    while (end_pos < lexer->length) {
+        char current = lexer->input[end_pos];
         
+        // Если встретили пробел или специальный символ без экранирования - конец слова
         if (is_whitespace(current) || is_special_char(current)) {
             break;
         }
         
+        // Обработка экранирования
         if (current == '\\') {
-            temp_pos++;
-            if (temp_pos < lexer->length) {
-                len++;
+            end_pos++; // Пропускаем обратный слеш
+            if (end_pos < lexer->length) {
+                end_pos++; // Учитываем экранированный символ
+            }
+        } else {
+            end_pos++;
+        }
+    }
+    
+    int actual_len = 0;
+    
+    // Подсчитываем фактическую длину (без символов экранирования)
+    int temp_pos = start_pos;
+    while (temp_pos < end_pos) {
+        if (lexer->input[temp_pos] == '\\') {
+            temp_pos++; // Пропускаем обратный слеш
+            if (temp_pos < end_pos) {
+                actual_len++;
                 temp_pos++;
             }
         } else {
-            len++;
+            actual_len++;
             temp_pos++;
         }
     }
     
-    if (len == 0) {
+    if (actual_len == 0) {
+        lexer->position = end_pos;
         return NULL;
     }
     
-    char *result = (char*)malloc(len + 1);
+    char *result = (char*)malloc(actual_len + 1);
     if (result == NULL) {
+        lexer->position = end_pos;
         return NULL;
     }
     
-    int i = 0;
-    while (lexer->position < lexer->length && i < len) {
-        char current = lexer->input[lexer->position];
-        
-        if (is_whitespace(current) || is_special_char(current)) {
-            break;
-        }
-        
-        if (current == '\\') {
-            lexer->position++;
-            if (lexer->position < lexer->length) {
-                result[i++] = lexer->input[lexer->position];
-                lexer->position++;
+    // Копируем с обработкой экранирования
+    int src_pos = start_pos;
+    int dst_pos = 0;
+    while (src_pos < end_pos && dst_pos < actual_len) {
+        if (lexer->input[src_pos] == '\\') {
+            src_pos++; // Пропускаем обратный слеш
+            if (src_pos < end_pos) {
+                result[dst_pos++] = lexer->input[src_pos++];
             }
         } else {
-            result[i++] = current;
-            lexer->position++;
+            result[dst_pos++] = lexer->input[src_pos++];
         }
     }
+    result[dst_pos] = '\0';
     
-    result[i] = '\0';
+    lexer->position = end_pos;
     return result;
 }
+//////////
 
 
 token_t *lexer_tokenize(lexer_t *lexer) {
