@@ -124,17 +124,14 @@ char *handle_word(lexer_t *lexer) {
     int start_pos = lexer->position;
     int end_pos = lexer->position;
     
-    // Определяем конец слова с учетом экранирования
     while (end_pos < lexer->length) {
         char current = lexer->input[end_pos];
         
-        // Если встретили пробел или специальный символ без экранирования - конец слова
         if (is_whitespace(current) || is_special_char(current)) {
             break;
         }
         
-        // Обработка экранирования
-        if (current == '\\') {
+        if (current == '\\') { // Обработка экранирования
             end_pos++; // Пропускаем обратный слеш
             if (end_pos < lexer->length) {
                 end_pos++; // Учитываем экранированный символ
@@ -146,8 +143,7 @@ char *handle_word(lexer_t *lexer) {
     
     int actual_len = 0;
     
-    // Подсчитываем фактическую длину (без символов экранирования)
-    int temp_pos = start_pos;
+    int temp_pos = start_pos;// Подсчитываем фактическую длину (без символов экранирования)
     while (temp_pos < end_pos) {
         if (lexer->input[temp_pos] == '\\') {
             temp_pos++; // Пропускаем обратный слеш
@@ -172,8 +168,7 @@ char *handle_word(lexer_t *lexer) {
         return NULL;
     }
     
-    // Копируем с обработкой экранирования
-    int src_pos = start_pos;
+    int src_pos = start_pos;// Копируем с обработкой экранирования
     int dst_pos = 0;
     while (src_pos < end_pos && dst_pos < actual_len) {
         if (lexer->input[src_pos] == '\\') {
