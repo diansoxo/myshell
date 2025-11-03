@@ -1,12 +1,14 @@
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
+#include <stdio.h>
 #include "ast.h"
 
 ast_node_t *ast_create_node(node_type_t type) {
     ast_node_t *node = (ast_node_t*)malloc(sizeof(ast_node_t));
-    if (!node) return NULL;
-    
+    if (node == NULL) {
+        return NULL;
+    }
+
     node->type = type;
     node->left = NULL;
     node->right = NULL;
@@ -23,90 +25,154 @@ ast_node_t *ast_create_node(node_type_t type) {
 
 ast_node_t *ast_create_command_node(char **argv, int argc) {
     ast_node_t *node = ast_create_node(NODE_COMMAND);
-    if (!node) return NULL;
+    if (node == NULL) {
+        return NULL;
+    }
     
     node->argv = argv;
     node->argc = argc;
+    
     return node;
 }
 
-void ast_add_redirect(ast_node_t *node, char *file, int type, int is_append) {
-    if (!node || node->type != NODE_COMMAND) return;
-    
-    switch (type) {
-        case TOKEN_REDIR_IN:
-            node->in_file = file;
-            break;
-        case TOKEN_REDIR_OUT:
-            node->out_file = file;
-            node->append = is_append;
-            break;
-        case TOKEN_REDIR_ERR:
-            node->err_file = file;
-            node->append = is_append;
-            break;
-    }
-}
-
 void ast_destroy(ast_node_t *node) {
-    if (!node) return;
+    if (node == NULL) {
+        return;
+    }
     
     ast_destroy(node->left);
     ast_destroy(node->right);
     
-    if (node->argv) {
+    
+    if (node->argv != NULL) {
         for (int i = 0; i < node->argc; i++) {
-            free(node->argv[i]);
+            if (node->argv[i] != NULL) {
+                free(node->argv[i]);
+            }
         }
         free(node->argv);
     }
+
     
-    free(node->in_file);
-    free(node->out_file);
-    free(node->err_file);
+    if (node->in_file != NULL) {
+        free(node->in_file);
+    }
+    if (node->out_file != NULL) {
+        free(node->out_file);
+    }
+    if (node->err_file != NULL) {
+        free(node->err_file);
+    }
     
     free(node);
 }
 
+
+static const char* node_type_to_string(node_type_t type) {
+    switch (type) {
+        case NODE_COMMAND: return "COMMAND";
+        case NODE_PIPE: return "PIPE";
+        case NODE_REDIRECT: return "REDIRECT";
+        case NODE_AND: return "AND";
+        case NODE_OR: return "OR";
+        case NODE_SEMICOLON: return "SEMICOLON";
+        case NODE_BACKGROUND: return "BACKGROUND";
+        case NODE_SUBSHELL: return "SUBSHELL";
+        default: return "UNKNOWN";
+    }
+}
+
 void ast_print(ast_node_t *node, int depth) {
-    if (!node) return;
+    if (node == NULL) {
+        return;
+    }
     
-    for (int i = 0; i < depth; i++) printf("  ");
+    for (int i = 0; i < depth; i++) {
+        printf("  ");
+    }
     
+    printf("%s", node_type_to_string(node->type));
+    
+
     switch (node->type) {
         case NODE_COMMAND:
-            printf("COMMAND: ");
-            for (int i = 0; i < node->argc; i++) {
-                printf("%s ", node->argv[i]);
+            if (node->argc > 0) {
+                printf(" [");
+                for (int i = 0; i < node->argc; i++) {
+                    printf("%s", node->argv[i]);
+                    if (i < node->argc - 1) {
+                        printf(" ");
+                    }
+                }
+                printf("]");
             }
-            if (node->in_file) printf("< %s ", node->in_file);
-            if (node->out_file) printf(">%s %s ", node->append ? ">" : "", node->out_file);
-            if (node->err_file) printf("2>%s %s ", node->append ? ">" : "", node->err_file);
             break;
+            
         case NODE_PIPE:
-            printf("PIPE");
+            if (node->redirect_err) {
+                printf(" (|& stderr redirect)");
+            }
             break;
+            
         case NODE_REDIRECT:
-            printf("REDIRECT");
             break;
-        case NODE_AND:
-            printf("AND");
-            break;
-        case NODE_OR:
-            printf("OR");
-            break;
-        case NODE_SEMICOLON:
-            printf("SEMICOLON");
-            break;
-        case NODE_BACKGROUND:
-            printf("BACKGROUND");
-            break;
-        case NODE_SUBSHELL:
-            printf("SUBSHELL");
+            
+        default:
             break;
     }
+    
+    if (node->in_file != NULL) {
+        printf(" < %s", node->in_file);
+    }
+    if (node->out_file != NULL) {
+        printf(" %s %s", node->append ? ">>" : ">", node->out_file);
+    }
+    if (node->err_file != NULL) {
+        printf(" %s %s", node->append ? "&>>" : "&>", node->err_file);
+    }
+    
     printf("\n");
     
     ast_print(node->left, depth + 1);
     ast_print(node->right, depth + 1);
+}
+
+char **ast_clone_argv(char **argv, int argc) {
+    if (argv == NULL || argc <= 0) {
+        return NULL;
+    }
+    
+    char **new_argv = (char**)malloc(argc * sizeof(char*));
+    if (new_argv == NULL) {
+        return NULL;
+    }
+    
+    for (int i = 0; i < argc; i++) {
+        new_argv[i] = strdup(argv[i]);
+        if (new_argv[i] == NULL) {
+            for (int j = 0; j < i; j++) {
+                free(new_argv[j]);
+            }
+            free(new_argv);
+            return NULL;
+        }
+    }
+    
+    return new_argv;
+}
+
+int ast_is_command(ast_node_t *node, const char *cmd_name) {
+    if (node == NULL || node->type != NODE_COMMAND || node->argc == 0) {
+        return 0;
+    }
+    
+    return strcmp(node->argv[0], cmd_name) == 0;
+}
+
+const char *ast_get_command_name(ast_node_t *node) {
+    if (node == NULL || node->type != NODE_COMMAND || node->argc == 0) {
+        return NULL;
+    }
+    
+    return node->argv[0];
 }
