@@ -6,23 +6,37 @@
 #define MAX_ARGS 256
 #define READ_END 0
 #define WRITE_END 1
+#define MAX_JOBS 100
+
+typedef enum {
+    JOB_RUNNING,
+    JOB_STOPPED,
+    JOB_DONE
+} job_state_t;
+
+typedef struct job_t {
+    int job_id;
+    pid_t pgid;
+    char *command;
+    job_state_t state;
+    struct job_t *next;
+} job_t;
 
 typedef struct {
-    int in_fd;          // stdin file descriptor
-    int out_fd;         // stdout file descriptor  
-    int err_fd;         // stderr file descriptor
-    int background;     // 1 if command should run in background
-    char *redirect_in;  // filename for input redirection
-    char *redirect_out; // filename for output redirection
-    char *redirect_err; // filename for error redirection
-    int append;         // 1 for append mode (>>)
+    int in_fd;
+    int out_fd;  
+    int err_fd;
+    int background;
+    char *redirect_in;
+    char *redirect_out;
+    char *redirect_err;
+    int append;
 } exec_context_t;
 
-// Main execution functions
+
 int execute_ast(ast_node_t *node);
 int execute_command(ast_node_t *node, exec_context_t *context);
 
-// Command type handlers
 int execute_simple_command(ast_node_t *node, exec_context_t *context);
 int execute_pipeline(ast_node_t *node, exec_context_t *context);
 int execute_redirect(ast_node_t *node, exec_context_t *context);
@@ -31,20 +45,33 @@ int execute_or(ast_node_t *node, exec_context_t *context);
 int execute_sequence(ast_node_t *node, exec_context_t *context);
 int execute_background(ast_node_t *node, exec_context_t *context);
 
-// Helper functions
 exec_context_t *create_exec_context(void);
 void free_exec_context(exec_context_t *context);
 void setup_redirections(exec_context_t *context);
-void restore_redirections(exec_context_t *context);
-int launch_process(char **args, exec_context_t *context);
-int handle_builtin(char **args);
+int launch_process(char **argv, exec_context_t *context);
+int handle_builtin(char **argv);
 int is_builtin_command(char *command);
 
-// Builtin commands
-int builtin_cd(char **args);
-int builtin_pwd(char **args);
-int builtin_echo(char **args);
-int builtin_exit(char **args);
-int builtin_help(char **args);
+int builtin_cd(char **argv);
+int builtin_pwd(char **argv);
+int builtin_echo(char **argv);
+int builtin_exit(char **argv);
+int builtin_help(char **argv);
+
+job_t *create_job(pid_t pgid, const char *command);
+void add_job(job_t *job);
+void remove_job(int job_id);
+job_t *find_job(pid_t pgid);
+void update_job_status(pid_t pgid, job_state_t state);
+void print_jobs(void);
+job_t *get_job_by_id(int job_id);
+
+int builtin_jobs(char **argv);
+int builtin_fg(char **argv);
+int builtin_bg(char **argv);
+int builtin_kill(char **argv);
+
+void setup_signal_handlers(void);
+void sigchld_handler(int sig);
 
 #endif
