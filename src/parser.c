@@ -6,7 +6,7 @@
 static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node);
 
 
-parser_t *parser_create(lexer_t *lexer) {// Создаем парсер - это как "переводчик" из токенов в команды
+parser_t *parser_create(lexer_t *lexer) {
     if (lexer == NULL) {
         return NULL;
     }
@@ -50,19 +50,19 @@ static token_t *parser_consume(parser_t *parser, token_type_t expected_type) {//
 }
 
 
-ast_node_t *parse(parser_t *parser) {// Главная функция парсера - начинает разбор
+ast_node_t *parse(parser_t *parser) {
     if (parser == NULL) {
         return NULL;
     }
     
    
-    return parse_pipeline(parser);// Начинаем с разбора конвейеров (команд с |)
+    return parse_pipeline(parser);// Начинаем с разбора конвейеров
 }
 
 
 ast_node_t *parse_pipeline(parser_t *parser) {// Разбираем конвейеры: команда1 | команда2 | команда3
     
-    ast_node_t *left = parse_command(parser);// Сначала разбираем левую команду
+    ast_node_t *left = parse_command(parser);//Переменная left теперь содержит узел первой команды (до конвейера)
     if (left == NULL) {
         return NULL;
     }
@@ -148,39 +148,38 @@ ast_node_t *parse_command(parser_t *parser) {// Разбираем команд�
         node_type_t node_type;
         
         
-        switch (token->type) {// Определяем тип оператора
+        switch (token->type) {//Определяем тип оператора
             case TOKEN_AND:
                 parser_consume(parser, TOKEN_AND);
-                node_type = NODE_AND;  // &&
+                node_type = NODE_AND;// &&
                 break;
                 
             case TOKEN_OR:
                 parser_consume(parser, TOKEN_OR);
-                node_type = NODE_OR;   // ||
+                node_type = NODE_OR; // ||
                 break;
                 
             case TOKEN_SEMICOLON:
                 parser_consume(parser, TOKEN_SEMICOLON);
-                node_type = NODE_SEMICOLON;  // ;
+                node_type = NODE_SEMICOLON; // ;
                 break;
                 
             case TOKEN_BACKGROUND:
                 parser_consume(parser, TOKEN_BACKGROUND);
-                node_type = NODE_BACKGROUND;  // &
+                node_type = NODE_BACKGROUND; //&
                 
-                // Для & создаем узел сразу
-                new_node = ast_create_node(node_type);
+                new_node = ast_create_node(node_type);// Создаем узел для &
                 if (new_node == NULL) {
                     ast_destroy(node);
                     return NULL;
                 }
                 new_node->left = node;
-                new_node->right = NULL;  // У & нет правой части
+                new_node->right = NULL; // У & нет правой части
                 node = new_node;
-                continue;  // Переходим к следующему токену
+                continue;// Переходим к следующему токену
                 
             default:
-                return node;  // Больше нет операторов
+                return node;// Больше нет операторов
         }
         
         
@@ -191,7 +190,7 @@ ast_node_t *parse_command(parser_t *parser) {// Разбираем команд�
         }
         
         new_node->left = node;
-        new_node->right = parse_command(parser);  // Разбираем правую команду
+        new_node->right = parse_command(parser);// Разбираем правую команду
         
         if (new_node->right == NULL) {
             ast_destroy(new_node);
@@ -207,16 +206,14 @@ ast_node_t *parse_command(parser_t *parser) {// Разбираем команд�
 
 
 ast_node_t *parse_simple_command(parser_t *parser) {// Разбираем простую команду или команду в скобках
-    // Проверяем есть ли открывающая скобка - это подсекция
-    if (parser_peek(parser) != NULL && parser_peek(parser)->type == TOKEN_LPAREN) {
+    
+    if (parser_peek(parser) != NULL && parser_peek(parser)->type == TOKEN_LPAREN) {// Проверяем есть ли открывающая скобка(подсекция)
         parser_consume(parser, TOKEN_LPAREN);
         
-        // Создаем узел для подсекции
-        ast_node_t *subshell_node = ast_create_node(NODE_SUBSHELL);
+        ast_node_t *subshell_node = ast_create_node(NODE_SUBSHELL);//Создаем узел для подсекции
         if (subshell_node == NULL) {
             return NULL;
         }
-        
         
         subshell_node->left = parse_pipeline(parser);// Разбираем команды внутри скобок
         if (subshell_node->left == NULL) {
@@ -224,7 +221,6 @@ ast_node_t *parse_simple_command(parser_t *parser) {// Разбираем про
             fprintf(stderr, "Ошибка: ожидается команда внутри скобок\n");
             return NULL;
         }
-        
         
         if (parser_peek(parser) == NULL || parser_peek(parser)->type != TOKEN_RPAREN) {// Проверяем закрывающую скобку
             ast_destroy(subshell_node);
@@ -292,10 +288,10 @@ ast_node_t *parse_simple_command(parser_t *parser) {// Разбираем про
     }
     
     
-    ast_node_t *command_node = ast_create_command_node(argv, argc);// Создаем узел команды
-    if (command_node == NULL) {
+    ast_node_t *command_node = ast_create_command_node(argv, argc);// Создаем узел для собранных аргументов
+    if (command_node == NULL) {//если не удалось создать узел, очищаем память
         for (int i = 0; i < argc; i++) {
-            free(argv[i]);
+            free(argv[i]);//осв кажд строку
         }
         free(argv);
         return NULL;
@@ -310,12 +306,12 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
         token_t *token = parser_peek(parser);
         
        
-        if (token->type == TOKEN_REDIR_IN) {// Перенаправление ввода: команда < файл
+        if (token->type == TOKEN_REDIR_IN) {// Перенаправление ввода команда < файл
             parser_consume(parser, TOKEN_REDIR_IN);
             token_t *file_token = parser_consume(parser, TOKEN_WORD);
             
-            if (file_token == NULL) {
-                ast_destroy(command_node);
+            if (file_token == NULL) {// Проверяем что после < идет имя файла
+                ast_destroy(command_node);// Удаляем узел команды
                 fprintf(stderr, "Ошибка: ожидается имя файла после '<'\n");
                 return NULL;
             }
@@ -324,8 +320,8 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
             if (command_node->in_file != NULL) {// Сохраняем имя файла для ввода
                 free(command_node->in_file);
             }
-            command_node->in_file = strdup(file_token->value);
-            if (command_node->in_file == NULL) {
+            command_node->in_file = strdup(file_token->value);//копируем имя файла
+            if (command_node->in_file == NULL) {//если не удалось выделить память
                 ast_destroy(command_node);
                 return NULL;
             }
@@ -342,7 +338,7 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
             }
             
             
-            if (command_node->out_file != NULL) {// Сохраняем имя файла для вывода
+            if (command_node->out_file != NULL) {//Сохраняем имя файла для вывода
                 free(command_node->out_file);
             }
             command_node->out_file = strdup(file_token->value);
@@ -350,10 +346,10 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
                 ast_destroy(command_node);
                 return NULL;
             }
-            command_node->append = 0; //обычная перезапись
+            command_node->append = 0;//обычная перезапись
         }
         
-        else if (token->type == TOKEN_REDIR_APPEND) {// Добавление в файл: команда >> файл
+        else if (token->type == TOKEN_REDIR_APPEND) {//Добавление в файл: команда >> файл
             parser_consume(parser, TOKEN_REDIR_APPEND);
             token_t *file_token = parser_consume(parser, TOKEN_WORD);
             
@@ -371,7 +367,7 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
                 ast_destroy(command_node);
                 return NULL;
             }
-            command_node->append = 1; // Добавление в конец
+            command_node->append = 1;//Добавление в конец
         }
         
         else if (token->type == TOKEN_REDIR_ERR) {// Перенаправление ошибок: команда &> файл или &>> файл
@@ -395,14 +391,14 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
             }
             
             
-            if (strcmp(redirect_op, "&>>") == 0) {// Определяем режим: перезапись или добавление
-                command_node->append = 1;  // Добавление
+            if (strcmp(redirect_op, "&>>") == 0) {//Определяем режим: перезапись или добавление
+                command_node->append = 1;//Добавление
             } else {
-                command_node->append = 0;  // Перезапись
+                command_node->append = 0; //Перезапись
             }
         }
         else {
-            break; // Больше нет перенаправлений
+            break;//Больше нет перенаправлений
         }
     }
     
