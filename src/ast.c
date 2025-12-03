@@ -29,8 +29,8 @@ ast_node_t *ast_create_command_node(char **argv, int argc) {
         return NULL;
     }
     
-    node->argv = argv;
-    node->argc = argc;
+    node->argv = argv;// сохраняем указатель на массив
+    node->argc = argc;// сохраняем количество
     
     return node;
 }
