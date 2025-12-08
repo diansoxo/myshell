@@ -6,114 +6,115 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <sys/types.h>
-#include <termios.h>
 #include "executor.h"
 #include "builtins.h"
+#include "job_control.h"
 
-// Глобальные переменные для управления задачами
-static job_t *job_list = NULL;    // Список всех задач
-static int next_job_id = 1;       // Счетчик для номеров задач
-
-// ========== БАЗОВЫЕ ФУНКЦИИ ==========
-
-// Создаем контекст выполнения - настройки для команды
 exec_context_t *create_exec_context(void) {
-    exec_context_t *context = (exec_context_t*)malloc(sizeof(exec_context_t));
-    if (context == NULL) return NULL;
+    exec_context_t *context = malloc(sizeof(exec_context_t));
+    if (context == NULL) {
+        return NULL;
+    }
     
-    // Устанавливаем значения по умолчанию
-    context->in_fd = STDIN_FILENO;   // Ввод с клавиатуры
-    context->out_fd = STDOUT_FILENO; // Вывод на экран  
-    context->err_fd = STDERR_FILENO; // Ошибки на экран
-    context->background = 0;         // Не фоновая задача
-    context->redirect_in = NULL;     // Нет перенаправления ввода
-    context->redirect_out = NULL;    // Нет перенаправления вывода
-    context->redirect_err = NULL;    // Нет перенаправления ошибок
-    context->append = 0;             // Обычная перезапись файлов
+    // Инициализация значений по умолчанию
+    context->in_fd = STDIN_FILENO;
+    context->out_fd = STDOUT_FILENO;
+    context->err_fd = STDERR_FILENO;
+    context->background = 0;
+    context->redirect_in = NULL;
+    context->redirect_out = NULL;
+    context->redirect_err = NULL;
+    context->append = 0;
     
     return context;
 }
 
-// Освобождаем память контекста
-void free_exec_context(exec_context_t *context) {
-    if (context == NULL) return;
+void free_exec_context(exec_context_t *context) {// Освобождает память контекста выполнения
+    if (context == NULL) {
+        return;
+    }
     
     // Освобождаем строки с именами файлов
-    if (context->redirect_in != NULL) free(context->redirect_in);
-    if (context->redirect_out != NULL) free(context->redirect_out);
-    if (context->redirect_err != NULL) free(context->redirect_err);
+    if (context->redirect_in != NULL) {
+        free(context->redirect_in);
+    }
+    if (context->redirect_out != NULL) {
+        free(context->redirect_out);
+    }
+    if (context->redirect_err != NULL) {
+        free(context->redirect_err);
+    }
     
     free(context);
 }
 
-// Настраиваем перенаправления ввода/вывода
-void setup_redirections(exec_context_t *context) {
-    // Перенаправляем ввод из файла
+void setup_redirections(exec_context_t *context) {// Настраивает перенаправления ввода/вывода/ошибок
+    // Перенаправление ввода из файла
     if (context->redirect_in != NULL) {
         int fd = open(context->redirect_in, O_RDONLY);
         if (fd < 0) {
             perror("open input file");
             exit(EXIT_FAILURE);
         }
-        dup2(fd, STDIN_FILENO);  // Заменяем стандартный ввод
+        dup2(fd, STDIN_FILENO);
         close(fd);
     }
     
-    // Перенаправляем вывод в файл
+    // Перенаправление вывода в файл
     if (context->redirect_out != NULL) {
         int flags = O_WRONLY | O_CREAT;
-        // Выбираем режим: добавление или перезапись
-        flags |= context->append ? O_APPEND : O_TRUNC;
+        if (context->append) {
+            flags |= O_APPEND;// Добавление в конец файла
+        } else {
+            flags |= O_TRUNC;// Перезапись файла
+        }
         
         int fd = open(context->redirect_out, flags, 0644);
         if (fd < 0) {
             perror("open output file");
             exit(EXIT_FAILURE);
         }
-        dup2(fd, STDOUT_FILENO);  // Заменяем стандартный вывод
+        dup2(fd, STDOUT_FILENO);
         close(fd);
     }
     
-    // Перенаправляем ошибки в файл
+    // Перенаправление ошибок в файл
     if (context->redirect_err != NULL) {
         int flags = O_WRONLY | O_CREAT;
-        flags |= context->append ? O_APPEND : O_TRUNC;
+        if (context->append) {
+            flags |= O_APPEND;
+        } else {
+            flags |= O_TRUNC;
+        }
         
         int fd = open(context->redirect_err, flags, 0644);
         if (fd < 0) {
             perror("open error file");
             exit(EXIT_FAILURE);
         }
-        dup2(fd, STDERR_FILENO);  // Заменяем стандартный вывод ошибок
+        dup2(fd, STDERR_FILENO);
         close(fd);
     }
 }
 
-// ========== ВЫПОЛНЕНИЕ AST ДЕРЕВА ==========
-
-// Главная функция выполнения дерева команд
-int execute_ast(ast_node_t *node) {
-    // Создаем контекст выполнения
+int execute_ast(ast_node_t *node) {// Основная функция для выполнения AST дерева
     exec_context_t *context = create_exec_context();
     if (context == NULL) {
-        fprintf(stderr, "Ошибка создания контекста выполнения\n");
+        fprintf(stderr, "Ошибка: не удалось создать контекст выполнения\n");
         return -1;
     }
     
-    // Выполняем команду
     int result = execute_command(node, context);
-    
-    // Освобождаем память
     free_exec_context(context);
     return result;
 }
 
-// Выполняем команду в зависимости от типа узла
-int execute_command(ast_node_t *node, exec_context_t *context) {
-    if (node == NULL) return 0;
+int execute_command(ast_node_t *node, exec_context_t *context) {// Выполняет команду в зависимости от типа узла AST
+    if (node == NULL) {
+        return 0;
+    }
     
-    // В зависимости от типа команды вызываем нужную функцию
+    // Выбор функции выполнения в зависимости от типа узла
     switch (node->type) {
         case NODE_COMMAND:
             return execute_simple_command(node, context);
@@ -132,25 +133,23 @@ int execute_command(ast_node_t *node, exec_context_t *context) {
         case NODE_SUBSHELL:
             return execute_simple_command(node->left, context);
         default:
-            fprintf(stderr, "Неизвестный тип узла AST\n");
+            fprintf(stderr, "Ошибка: неизвестный тип узла AST\n");
             return -1;
     }
 }
 
-// ========== ФУНКЦИИ ДЛЯ РАЗНЫХ ТИПОВ КОМАНД ==========
-
-// Выполняем простую команду (например: ls -l)
-int execute_simple_command(ast_node_t *node, exec_context_t *context) {
+int execute_simple_command(ast_node_t *node, exec_context_t *context) {//
+    // Проверка на пустую команду
     if (node == NULL || node->argv == NULL || node->argc == 0) {
-        return 0;  // Пустая команда - ничего не делаем
+        return 0;
     }
     
-    // Проверяем встроенная ли это команда (cd, echo и т.д.)
+    // Проверяем встроенную команду
     if (is_builtin_command(node->argv[0])) {
         return handle_builtin(node->argv);
     }
     
-    // Настраиваем перенаправления из команды
+    // Настраиваем перенаправления из узла команды
     if (node->in_file != NULL) {
         context->redirect_in = strdup(node->in_file);
     }
@@ -167,35 +166,34 @@ int execute_simple_command(ast_node_t *node, exec_context_t *context) {
     return launch_process(node->argv, context);
 }
 
-// Выполняем конвейер (команда1 | команда2)
-int execute_pipeline(ast_node_t *node, exec_context_t *context) {
+int execute_pipeline(ast_node_t *node, exec_context_t *context) {// Выполняет конвейер команд
     int pipefd[2];
     
-    // Создаем pipe - канал связи между процессами
+    // Создаем пайп
     if (pipe(pipefd) == -1) {
         perror("pipe");
         return -1;
     }
     
-    // Сохраняем оригинальные настройки ввода/вывода
+    // Сохраняем оригинальные дескрипторы
     int saved_stdout = dup(STDOUT_FILENO);
     int saved_stdin = dup(STDIN_FILENO);
     
-    // Настраиваем pipe для левой команды (ее вывод идет в pipe)
+    // Настраиваем вывод левой команды на пайп
     dup2(pipefd[WRITE_END], STDOUT_FILENO);
     close(pipefd[WRITE_END]);
     
-    // Выполняем левую команду (ее вывод пойдет в pipe)
+    // Выполняем левую команду (ее вывод пойдет в пайп)
     execute_command(node->left, context);
 
     // Восстанавливаем стандартный вывод
     dup2(saved_stdout, STDOUT_FILENO);
     
-    // Настраиваем ввод для правой команды (читает из pipe)
+    // Настраиваем ввод правой команды из пайпа
     dup2(pipefd[READ_END], STDIN_FILENO);
     close(pipefd[READ_END]);
     
-    // Выполняем правую команду (читает из pipe)
+    // Выполняем правую команду (читает из пайпа)
     int right_status = execute_command(node->right, context);
     
     // Восстанавливаем стандартный ввод
@@ -208,13 +206,16 @@ int execute_pipeline(ast_node_t *node, exec_context_t *context) {
     return right_status;
 }
 
-// Выполняем перенаправления (команда > файл)
-int execute_redirect(ast_node_t *node, exec_context_t *context) {
-    if (node == NULL) return 0;
+int execute_redirect(ast_node_t *node, exec_context_t *context) {// Выполняет перенаправления ввода/вывода/ошибок
+    if (node == NULL) {
+        return 0;
+    }
     
-    // Создаем копию контекста для перенаправлений
+    // Создаем новый контекст для перенаправлений
     exec_context_t *redirect_context = create_exec_context();
-    if (redirect_context == NULL) return -1;
+    if (redirect_context == NULL) {
+        return -1;
+    }
     
     // Копируем настройки из основного контекста
     redirect_context->in_fd = context->in_fd;
@@ -222,7 +223,7 @@ int execute_redirect(ast_node_t *node, exec_context_t *context) {
     redirect_context->err_fd = context->err_fd;
     redirect_context->background = context->background;
     
-    // Устанавливаем перенаправления из узла AST
+    // Устанавливаем перенаправления из узла
     if (node->in_file != NULL) {
         redirect_context->redirect_in = strdup(node->in_file);
     }
@@ -237,42 +238,35 @@ int execute_redirect(ast_node_t *node, exec_context_t *context) {
     
     // Выполняем команду с перенаправлениями
     int result = execute_command(node->left, redirect_context);
-    
-    // Освобождаем память
     free_exec_context(redirect_context);
     return result;
 }
 
-// Выполняем И (команда1 && команда2)
-int execute_and(ast_node_t *node, exec_context_t *context) {
+int execute_and(ast_node_t *node, exec_context_t *context) {// Выполняет оператор И (&&)
     // Выполняем левую команду
     int left_status = execute_command(node->left, context);
     
-    // Если первая команда успешна (вернула 0), выполняем вторую
+    // Если первая команда успешна, выполняем вторую
     if (left_status == 0) {
         return execute_command(node->right, context);
     }
     
-    // Иначе возвращаем статус первой команды
     return left_status;
 }
 
-// Выполняем ИЛИ (команда1 || команда2)
-int execute_or(ast_node_t *node, exec_context_t *context) {
+int execute_or(ast_node_t *node, exec_context_t *context) {// Выполняет оператор ИЛИ (||)
     // Выполняем левую команду
     int left_status = execute_command(node->left, context);
     
-    // Если первая команда неуспешна (вернула не 0), выполняем вторую
+    // Если первая команда неуспешна, выполняем вторую
     if (left_status != 0) {
         return execute_command(node->right, context);
     }
     
-    // Иначе возвращаем статус первой команды
     return left_status;
 }
 
-// Выполняем последовательность (команда1 ; команда2)
-int execute_sequence(ast_node_t *node, exec_context_t *context) {
+int execute_sequence(ast_node_t *node, exec_context_t *context) {// Выполняет последовательность команд (;)
     // Выполняем левую команду
     execute_command(node->left, context);
     
@@ -280,15 +274,12 @@ int execute_sequence(ast_node_t *node, exec_context_t *context) {
     return execute_command(node->right, context);
 }
 
-// Выполняем в фоне (команда &)
-int execute_background(ast_node_t *node, exec_context_t *context) {
-    context->background = 1;  // Устанавливаем фоновый режим
+
+int execute_background(ast_node_t *node, exec_context_t *context) {// Выполняет команду в фоне (&)
+    context->background = 1;
     return execute_command(node->left, context);
 }
 
-// ========== ЗАПУСК ВНЕШНИХ ПРОГРАММ ==========
-
-// Запускаем внешнюю программу
 int launch_process(char **argv, exec_context_t *context) {
     pid_t pid = fork();  // Создаем новый процесс
     
@@ -298,8 +289,6 @@ int launch_process(char **argv, exec_context_t *context) {
         // Настраиваем группу процессов
         if (context->background) {
             setpgid(0, 0);  // Создаем новую группу для фоновых
-        } else {
-            setpgid(0, getpgid(0));
         }
         
         // Восстанавливаем стандартные обработчики сигналов
@@ -338,12 +327,9 @@ int launch_process(char **argv, exec_context_t *context) {
         } else {
             // Обычная задача - ждем завершения
             setpgid(pid, pid);
-            tcsetpgrp(STDIN_FILENO, pid);  // Отдаем управление
             
             int status;
             waitpid(pid, &status, WUNTRACED);  // Ждем завершения
-            
-            tcsetpgrp(STDIN_FILENO, getpgrp());  // Возвращаем управление
             
             // Обрабатываем результат
             if (WIFEXITED(status)) {
@@ -357,232 +343,23 @@ int launch_process(char **argv, exec_context_t *context) {
                 add_job(job);
                 printf("[%d] Stopped %s\n", job->job_id, argv[0]);
             }
-        }
-    }
-    return 0;
-}
-
-// ========== УПРАВЛЕНИЕ ЗАДАЧАМИ ==========
-
-// Создаем новую задачу
-job_t *create_job(pid_t pgid, const char *command) {
-    job_t *job = (job_t*)malloc(sizeof(job_t));
-    if (!job) return NULL;
-    
-    job->job_id = next_job_id++;
-    job->pgid = pgid;
-    job->command = strdup(command);
-    job->state = JOB_RUNNING;
-    job->next = NULL;
-    
-    return job;
-}
-
-// Добавляем задачу в список
-void add_job(job_t *job) {
-    if (!job_list) {
-        job_list = job;  // Первая задача в списке
-    } else {
-        // Идем до конца списка и добавляем
-        job_t *current = job_list;
-        while (current->next) {
-            current = current->next;
-        }
-        current->next = job;
-    }
-}
-
-// Удаляем задачу из списка
-void remove_job(int job_id) {
-    job_t *current = job_list;
-    job_t *prev = NULL;
-    
-    // Ищем задачу в списке
-    while (current) {
-        if (current->job_id == job_id) {
-            // Нашли - удаляем из списка
-            if (prev) {
-                prev->next = current->next;
-            } else {
-                job_list = current->next;
-            }
-            free(current->command);
-            free(current);
-            return;
-        }
-        prev = current;
-        current = current->next;
-    }
-}
-
-// Ищем задачу по ID группы процессов
-job_t *find_job(pid_t pgid) {
-    job_t *current = job_list;
-    while (current) {
-        if (current->pgid == pgid) {
-            return current;
-        }
-        current = current->next;
-    }
-    return NULL;
-}
-
-// Обновляем статус задачи
-void update_job_status(pid_t pgid, job_state_t state) {
-    job_t *job = find_job(pgid);
-    if (job) {
-        job->state = state;
-    }
-}
-
-// Печатаем список всех задач
-void print_jobs(void) {
-    job_t *current = job_list;
-    if (!current) {
-        printf("Нет активных задач\n");
-        return;
-    }
-    
-    while (current) {
-        // Преобразуем состояние в строку
-        const char *state_str = "Running";
-        if (current->state == JOB_STOPPED) state_str = "Stopped";
-        else if (current->state == JOB_DONE) state_str = "Done";
-        
-        printf("[%d] %d %s %s\n", 
-               current->job_id, current->pgid, state_str, current->command);
-        current = current->next;
-    }
-}
-
-// Ищем задачу по номеру
-job_t *get_job_by_id(int job_id) {
-    job_t *current = job_list;
-    while (current) {
-        if (current->job_id == job_id) {
-            return current;
-        }
-        current = current->next;
-    }
-    return NULL;
-}
-
-// ========== ОБРАБОТКА СИГНАЛОВ ==========
-
-// Обработчик для завершения дочерних процессов
-void sigchld_handler(int sig) {
-    (void)sig; // Игнорируем параметр
-    int status;
-    pid_t pid;
-    
-    // Проверяем все завершившиеся процессы
-    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
-        job_t *job = find_job(pid);
-        if (job) {
-            if (WIFEXITED(status) || WIFSIGNALED(status)) {
-                // Процесс завершился
-                job->state = JOB_DONE;
-                printf("\n[%d] Done %s\n", job->job_id, job->command);
-            } else if (WIFSTOPPED(status)) {
-                // Процесс остановлен
-                job->state = JOB_STOPPED;
-                printf("\n[%d] Stopped %s\n", job->job_id, job->command);
-            }
+            
+            return 0;
         }
     }
 }
 
-// Настраиваем обработчики сигналов
-void setup_signal_handlers(void) {
+void setup_signal_handlers(void) {// Настраивает обработчики сигналов для shell
     struct sigaction sa;
+    
+    // Настраиваем обработчик SIGCHLD
     sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sa.sa_flags = SA_RESTART;
     sigaction(SIGCHLD, &sa, NULL);
     
-    // Игнорируем Ctrl+C и Ctrl+\ в shell
+    // Игнорируем сигналы в shell
     signal(SIGINT, SIG_IGN);
     signal(SIGQUIT, SIG_IGN);
-}
-
-// ========== ВСТРОЕННЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ЗАДАЧАМИ ==========
-
-// Команда jobs - показать все задачи
-int builtin_jobs(char **argv) {
-    (void)argv; // Игнорируем аргументы
-    print_jobs();
-    return 0;
-}
-
-// Команда fg - перевести задачу на передний план
-int builtin_fg(char **argv) {
-    if (!argv[1]) {
-        fprintf(stderr, "fg: usage: fg <job_id>\n");
-        return 1;
-    }
-    
-    int job_id = atoi(argv[1]);
-    job_t *job = get_job_by_id(job_id);
-    if (!job) {
-        fprintf(stderr, "fg: job not found: %d\n", job_id);
-        return 1;
-    }
-    
-    // Переводим задачу на передний план
-    tcsetpgrp(STDIN_FILENO, job->pgid);
-    kill(-job->pgid, SIGCONT);  // Продолжаем выполнение
-    job->state = JOB_RUNNING;
-    
-    // Ждем завершения
-    int status;
-    waitpid(job->pgid, &status, WUNTRACED);
-    
-    // Возвращаем управление shell
-    tcsetpgrp(STDIN_FILENO, getpgrp());
-    
-    if (WIFEXITED(status) || WIFSIGNALED(status)) {
-        remove_job(job_id);  // Удаляем если завершилась
-    }
-    
-    return 0;
-}
-
-// Команда bg - продолжить задачу в фоне
-int builtin_bg(char **argv) {
-    if (!argv[1]) {
-        fprintf(stderr, "bg: usage: bg <job_id>\n");
-        return 1;
-    }
-    
-    int job_id = atoi(argv[1]);
-    job_t *job = get_job_by_id(job_id);
-    if (!job) {
-        fprintf(stderr, "bg: job not found: %d\n", job_id);
-        return 1;
-    }
-    
-    kill(-job->pgid, SIGCONT);  // Продолжаем выполнение
-    job->state = JOB_RUNNING;
-    printf("[%d] %s\n", job_id, job->command);
-    
-    return 0;
-}
-
-// Команда kill - завершить задачу
-int builtin_kill(char **argv) {
-    if (!argv[1]) {
-        fprintf(stderr, "kill: usage: kill <job_id>\n");
-        return 1;
-    }
-    
-    int job_id = atoi(argv[1]);
-    job_t *job = get_job_by_id(job_id);
-    if (!job) {
-        fprintf(stderr, "kill: job not found: %d\n", job_id);
-        return 1;
-    }
-    
-    kill(-job->pgid, SIGTERM);  // Отправляем сигнал завершения
-    printf("Сигнал TERM отправлен задаче [%d]\n", job_id);
-    return 0;
+    signal(SIGTSTP, SIG_IGN);
 }
