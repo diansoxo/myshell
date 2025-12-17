@@ -98,19 +98,50 @@ static void print_prompt() {
     free(current_dir);
 }
 
-// Читаем что пользователь ввел с клавиатуры
-static char *read_input() {
-    static char input[MAX_INPUT_LENGTH];  // Буфер для ввода
+static char *read_input() {//изм
+    size_t capacity = INPUT_CHUNK_SIZE;
+    size_t len = 0;
+    char *buffer = malloc(capacity);//динамическое выделение памяти
     
-    // Читаем строку из стандартного ввода
-    if (fgets(input, MAX_INPUT_LENGTH, stdin) == NULL) {
-        return NULL;  // Это случится если нажать Ctrl+D (конец файла)
+    if (buffer == NULL) {
+        return NULL;
     }
     
-    // Убираем символ новой строки в конце (\n)
-    input[strcspn(input, "\n")] = '\0';
+    buffer[0] = '\0';
     
-    return input;
+    while (1) {
+        if (fgets(buffer + len, capacity - len, stdin) == NULL) {// Читаем по кусочкам
+            if (len == 0) {
+                free(buffer);
+                return NULL;  // Ctrl+D или EOF
+            }
+            break;
+        }
+        
+        len += strlen(buffer + len);
+        
+        if (len > 0 && buffer[len - 1] == '\n') {// Проверяем, есть ли символ новой строки
+            buffer[len - 1] = '\0';// Убираем \n
+            
+            char *trimmed = realloc(buffer, len);// Оптимизируем память - обрезаем буфер до нужного размера
+            if (trimmed != NULL) {
+                return trimmed;
+            }
+            return buffer;  // Если realloc не удался, возвращаем как есть
+        }
+        
+        if (len + 1 >= capacity) {
+            capacity *= 2;
+            char *new_buffer = realloc(buffer, capacity);//увеличение буфера при необходимости
+            if (new_buffer == NULL) {
+                free(buffer);//Память освобождается
+                return NULL;
+            }
+            buffer = new_buffer;
+        }
+    }
+    
+    return buffer;
 }
 
 // Обрабатываем команду: разбираем и выполняем
