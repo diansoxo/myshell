@@ -1,4 +1,4 @@
-#include <stdlib.h>///изм
+#include <stdlib.h>///изменила
 #include <string.h>
 #include <stdio.h>
 #include "parser.h"
@@ -116,7 +116,7 @@ ast_node_t *parse_pipeline(parser_t *parser) {// Разбираем конвей
             
             pipe_node->left = left;
             pipe_node->right = right;
-            pipe_node->redirect_err = 1; // Помечаем что это |&
+            pipe_node->data.pipe.redirect_err = 1; // Помечаем что это |&
             left = pipe_node;
             
         } else {
@@ -301,33 +301,31 @@ ast_node_t *parse_simple_command(parser_t *parser) {// Разбираем про
 }
 
 
-static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {// Разбираем перенаправления: <, >, >>, &>, &>>
+static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {//перенаправления например cmd > out.txt измм
     while (parser_peek(parser) != NULL) {
         token_t *token = parser_peek(parser);
         
-       
-        if (token->type == TOKEN_REDIR_IN) {// Перенаправление ввода команда < файл
+        if (token->type == TOKEN_REDIR_IN) {
             parser_consume(parser, TOKEN_REDIR_IN);
             token_t *file_token = parser_consume(parser, TOKEN_WORD);
             
-            if (file_token == NULL) {// Проверяем что после < идет имя файла
-                ast_destroy(command_node);// Удаляем узел команды
+            if (file_token == NULL) {
+                ast_destroy(command_node);
                 fprintf(stderr, "Ошибка: ожидается имя файла после '<'\n");
                 return NULL;
             }
             
             
-            if (command_node->in_file != NULL) {// Сохраняем имя файла для ввода
-                free(command_node->in_file);
-            }
-            command_node->in_file = strdup(file_token->value);//копируем имя файла
-            if (command_node->in_file == NULL) {//если не удалось выделить память
+            ast_node_t *redirect_node = ast_create_node(NODE_REDIRECT);// изм создали узел перенаправления
+            if (redirect_node == NULL) {
                 ast_destroy(command_node);
                 return NULL;
             }
+            redirect_node->left = command_node;
+            redirect_node->data.redirect.in_file = strdup(file_token->value);//изм
+            command_node = redirect_node;
         }
-        
-        else if (token->type == TOKEN_REDIR_OUT) {// Перенаправление вывода: команда > файл
+        else if (token->type == TOKEN_REDIR_OUT) {
             parser_consume(parser, TOKEN_REDIR_OUT);
             token_t *file_token = parser_consume(parser, TOKEN_WORD);
             
@@ -337,19 +335,17 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
                 return NULL;
             }
             
-            
-            if (command_node->out_file != NULL) {//Сохраняем имя файла для вывода
-                free(command_node->out_file);
-            }
-            command_node->out_file = strdup(file_token->value);
-            if (command_node->out_file == NULL) {
+            ast_node_t *redirect_node = ast_create_node(NODE_REDIRECT);
+            if (redirect_node == NULL) {
                 ast_destroy(command_node);
                 return NULL;
             }
-            command_node->append = 0;//обычная перезапись
+            redirect_node->left = command_node;
+            redirect_node->data.redirect.out_file = strdup(file_token->value);  //изм
+            redirect_node->data.redirect.append = 0;  //изм
+            command_node = redirect_node;
         }
-        
-        else if (token->type == TOKEN_REDIR_APPEND) {//Добавление в файл: команда >> файл
+        else if (token->type == TOKEN_REDIR_APPEND) {
             parser_consume(parser, TOKEN_REDIR_APPEND);
             token_t *file_token = parser_consume(parser, TOKEN_WORD);
             
@@ -359,18 +355,17 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
                 return NULL;
             }
             
-            if (command_node->out_file != NULL) {
-                free(command_node->out_file);
-            }
-            command_node->out_file = strdup(file_token->value);
-            if (command_node->out_file == NULL) {
+            ast_node_t *redirect_node = ast_create_node(NODE_REDIRECT);
+            if (redirect_node == NULL) {
                 ast_destroy(command_node);
                 return NULL;
             }
-            command_node->append = 1;//Добавление в конец
+            redirect_node->left = command_node;
+            redirect_node->data.redirect.out_file = strdup(file_token->value);  //изм
+            redirect_node->data.redirect.append = 1;  //изм
+            command_node = redirect_node;
         }
-        
-        else if (token->type == TOKEN_REDIR_ERR) {// Перенаправление ошибок: команда &> файл или &>> файл
+        else if (token->type == TOKEN_REDIR_ERR) {
             const char *redirect_op = token->value;
             parser_consume(parser, TOKEN_REDIR_ERR);
             token_t *file_token = parser_consume(parser, TOKEN_WORD);
@@ -381,24 +376,24 @@ static ast_node_t *parse_redirects(parser_t *parser, ast_node_t *command_node) {
                 return NULL;
             }
             
-            if (command_node->err_file != NULL) {
-                free(command_node->err_file);
-            }
-            command_node->err_file = strdup(file_token->value);
-            if (command_node->err_file == NULL) {
+            ast_node_t *redirect_node = ast_create_node(NODE_REDIRECT);
+            if (redirect_node == NULL) {
                 ast_destroy(command_node);
                 return NULL;
             }
+            redirect_node->left = command_node;
+            redirect_node->data.redirect.err_file = strdup(file_token->value);  //изм
             
             
-            if (strcmp(redirect_op, "&>>") == 0) {//Определяем режим: перезапись или добавление
-                command_node->append = 1;//Добавление
+            if (strcmp(redirect_op, "&>>") == 0) {// Определяем режим: перезапись или добавление
+                redirect_node->data.redirect.append = 1;//изм
             } else {
-                command_node->append = 0; //Перезапись
+                redirect_node->data.redirect.append = 0;//изм
             }
+            command_node = redirect_node;
         }
         else {
-            break;//Больше нет перенаправлений
+            break; //больше нет перенаправлений
         }
     }
     
