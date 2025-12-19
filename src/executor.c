@@ -10,21 +10,20 @@
 #include "builtins.h"
 #include "job_control.h"
 
-exec_context_t *create_exec_context(void) {
+exec_context_t *create_exec_context(void) {//инициализирует контекст выполнения команды
     exec_context_t *context = malloc(sizeof(exec_context_t));
     if (context == NULL) {
         return NULL;
     }
     
-    // Инициализация значений по умолчанию
-    context->in_fd = STDIN_FILENO;
-    context->out_fd = STDOUT_FILENO;
-    context->err_fd = STDERR_FILENO;
-    context->background = 0;
-    context->redirect_in = NULL;
+    context->in_fd = STDIN_FILENO;//куда читать ввод
+    context->out_fd = STDOUT_FILENO;//куда писать вывод
+    context->err_fd = STDERR_FILENO;//куда писать ошибки
+    context->background = 0;//в фоне или нет
+    context->redirect_in = NULL;//имя фалй для перенаправления ввода
     context->redirect_out = NULL;
     context->redirect_err = NULL;
-    context->append = 0;
+    context->append = 0;//добавление в файл или перезапись
     
     return context;
 }
@@ -34,8 +33,7 @@ void free_exec_context(exec_context_t *context) {// Освобождает па�
         return;
     }
     
-    // Освобождаем строки с именами файлов
-    if (context->redirect_in != NULL) {
+    if (context->redirect_in != NULL) {// Освобождаем строки с именами файлов
         free(context->redirect_in);
     }
     if (context->redirect_out != NULL) {
@@ -48,9 +46,9 @@ void free_exec_context(exec_context_t *context) {// Освобождает па�
     free(context);
 }
 
-void setup_redirections(exec_context_t *context) {// Настраивает перенаправления ввода/вывода/ошибок
-    // Перенаправление ввода из файла
-    if (context->redirect_in != NULL) {
+void setup_redirections(exec_context_t *context) {
+    if (context->redirect_in != NULL) {// Перенаправление ввода из файла
+        if (context->redirect_in != NULL) {
         int fd = open(context->redirect_in, O_RDONLY);
         if (fd < 0) {
             perror("open input file");
@@ -59,14 +57,13 @@ void setup_redirections(exec_context_t *context) {// Настраивает пе
         dup2(fd, STDIN_FILENO);
         close(fd);
     }
-    
-    // Перенаправление вывода в файл
-    if (context->redirect_out != NULL) {
+    }
+    if (context->redirect_out != NULL) {// Перенаправление вывода в файл
         int flags = O_WRONLY | O_CREAT;
         if (context->append) {
-            flags |= O_APPEND;// Добавление в конец файла
+            flags |= O_APPEND;  // Добавление в конец файла
         } else {
-            flags |= O_TRUNC;// Перезапись файла
+            flags |= O_TRUNC;   // Перезапись файла
         }
         
         int fd = open(context->redirect_out, flags, 0644);
@@ -78,8 +75,7 @@ void setup_redirections(exec_context_t *context) {// Настраивает пе
         close(fd);
     }
     
-    // Перенаправление ошибок в файл
-    if (context->redirect_err != NULL) {
+    if (context->redirect_err != NULL) {// Перенаправление ошибок в файл
         int flags = O_WRONLY | O_CREAT;
         if (context->append) {
             flags |= O_APPEND;
@@ -108,6 +104,7 @@ int execute_ast(ast_node_t *node) {// Основная функция для в�
     free_exec_context(context);
     return result;
 }
+
 
 int execute_command(ast_node_t *node, exec_context_t *context) {// Выполняет команду в зависимости от типа узла AST
     if (node == NULL) {
@@ -138,50 +135,43 @@ int execute_command(ast_node_t *node, exec_context_t *context) {// Выполн�
     }
 }
 
-int execute_simple_command(ast_node_t *node, exec_context_t *context) {//
-    // Проверка на пустую команду
-    if (node == NULL || node->argv == NULL || node->argc == 0) {
+
+int execute_simple_command(ast_node_t *node, exec_context_t *context) {//вып прост команд
+    
+    if (node == NULL || node->type != NODE_COMMAND || node->data.command.argv == NULL || node->data.command.argc == 0) {// Проверка на пустую команду
         return 0;
     }
     
-    // Проверяем встроенную команду
-    if (is_builtin_command(node->argv[0])) {
-        return handle_builtin(node->argv);
-    }
+    if (is_builtin_command(node->data.command.argv[0])) {// Проверяем встроенную команду
+        return handle_builtin(node->data.command.argv);
+    }//Теперь перенаправления хранятся в отдельном узле NODE_REDIRECT команда больше не содержит in_file, out_file, err_file эти поля теперь в узле NODE_REDIRECT
     
-    // Настраиваем перенаправления из узла команды
-    if (node->in_file != NULL) {
-        context->redirect_in = strdup(node->in_file);
-    }
-    if (node->out_file != NULL) {
-        context->redirect_out = strdup(node->out_file);
-        context->append = node->append;
-    }
-    if (node->err_file != NULL) {
-        context->redirect_err = strdup(node->err_file);
-        context->append = node->append;
-    }
     
-    // Запускаем внешнюю программу
-    return launch_process(node->argv, context);
+    return launch_process(node->data.command.argv, context);//запускаем внешнюю программу
 }
+
 
 int execute_pipeline(ast_node_t *node, exec_context_t *context) {// Выполняет конвейер команд
     int pipefd[2];
     
-    // Создаем пайп
-    if (pipe(pipefd) == -1) {
+    if (pipe(pipefd) == -1) {// Создаем пайп
         perror("pipe");
         return -1;
     }
     
-    // Сохраняем оригинальные дескрипторы
-    int saved_stdout = dup(STDOUT_FILENO);
+    int saved_stdout = dup(STDOUT_FILENO);// Сохраняем оригинальные дескрипторы
     int saved_stdin = dup(STDIN_FILENO);
     
-    // Настраиваем вывод левой команды на пайп
-    dup2(pipefd[WRITE_END], STDOUT_FILENO);
+    int redirect_stderr = (node->type == NODE_PIPE && node->data.pipe.redirect_err);//изм проверяем флаг redirect_err
+    
+    
+    dup2(pipefd[WRITE_END], STDOUT_FILENO);// Настраиваем вывод левой команды на пайп
     close(pipefd[WRITE_END]);
+    
+    // Если нужно перенаправить stderr
+    if (redirect_stderr) {
+        dup2(pipefd[WRITE_END], STDERR_FILENO);
+    }
     
     // Выполняем левую команду (ее вывод пойдет в пайп)
     execute_command(node->left, context);
@@ -206,38 +196,36 @@ int execute_pipeline(ast_node_t *node, exec_context_t *context) {// Выполн
     return right_status;
 }
 
+
 int execute_redirect(ast_node_t *node, exec_context_t *context) {// Выполняет перенаправления ввода/вывода/ошибок
-    if (node == NULL) {
+    if (node == NULL || node->type != NODE_REDIRECT) {
         return 0;
     }
     
-    // Создаем новый контекст для перенаправлений
-    exec_context_t *redirect_context = create_exec_context();
+    exec_context_t *redirect_context = create_exec_context();// Создаем новый контекст для перенаправлений
     if (redirect_context == NULL) {
         return -1;
     }
     
-    // Копируем настройки из основного контекста
     redirect_context->in_fd = context->in_fd;
     redirect_context->out_fd = context->out_fd;
     redirect_context->err_fd = context->err_fd;
     redirect_context->background = context->background;
     
-    // Устанавливаем перенаправления из узла
-    if (node->in_file != NULL) {
-        redirect_context->redirect_in = strdup(node->in_file);
+    
+    if (node->data.redirect.in_file != NULL) {// Устанавливаем перенаправления из узла
+        redirect_context->redirect_in = strdup(node->data.redirect.in_file);//изм
     }
-    if (node->out_file != NULL) {
-        redirect_context->redirect_out = strdup(node->out_file);
-        redirect_context->append = node->append;
+    if (node->data.redirect.out_file != NULL) {
+        redirect_context->redirect_out = strdup(node->data.redirect.out_file);//изм
+        redirect_context->append = node->data.redirect.append;//изм
     }
-    if (node->err_file != NULL) {
-        redirect_context->redirect_err = strdup(node->err_file);
-        redirect_context->append = node->append;
+    if (node->data.redirect.err_file != NULL) {
+        redirect_context->redirect_err = strdup(node->data.redirect.err_file);//изм
+        redirect_context->append = node->data.redirect.append;//изм
     }
     
-    // Выполняем команду с перенаправлениями
-    int result = execute_command(node->left, redirect_context);
+    int result = execute_command(node->left, redirect_context);//выполняем команду с перенаправлениями
     free_exec_context(redirect_context);
     return result;
 }
@@ -266,11 +254,11 @@ int execute_or(ast_node_t *node, exec_context_t *context) {// Выполняет
     return left_status;
 }
 
-int execute_sequence(ast_node_t *node, exec_context_t *context) {// Выполняет последовательность команд (;)
-    // Выполняем левую команду
+
+int execute_sequence(ast_node_t *node, exec_context_t *context) {// Выполняет последовательность команд ;
+
     execute_command(node->left, context);
     
-    // Выполняем правую команду
     return execute_command(node->right, context);
 }
 
@@ -348,6 +336,7 @@ int launch_process(char **argv, exec_context_t *context) {
         }
     }
 }
+
 
 void setup_signal_handlers(void) {// Настраивает обработчики сигналов для shell
     struct sigaction sa;
