@@ -1,74 +1,81 @@
-#include <stdlib.h>
+#include <stdlib.h>//добавила switch для инициализации union
 #include <string.h>
 #include <stdio.h>
 #include "ast.h"
 
-ast_node_t *ast_create_node(node_type_t type) {
+
+ast_node_t *ast_create_node(node_type_t type) {//создание узла для разных типов операторов измм (созд узел нужного типа)
     ast_node_t *node = (ast_node_t*)malloc(sizeof(ast_node_t));
     if (node == NULL) {
         return NULL;
     }
-
     node->type = type;
     node->left = NULL;
     node->right = NULL;
-    node->argv = NULL;
-    node->argc = 0;
-    node->in_file = NULL;
-    node->out_file = NULL;
-    node->err_file = NULL;
-    node->append = 0;
-    node->redirect_err = 0;
     
-    return node;
+    
+    switch (type) {//Поля инициализируются только в соответствующих частях union
+        case NODE_COMMAND:
+            node->data.command.argv = NULL;
+            node->data.command.argc = 0;
+            break;
+        case NODE_PIPE:
+            node->data.pipe.redirect_err = 0;
+            break;
+        case NODE_REDIRECT:
+            node->data.redirect.in_file = NULL;
+            node->data.redirect.out_file = NULL;
+            node->data.redirect.err_file = NULL;
+            node->data.redirect.append = 0;
+            break;
+        default:// Для остальных типов ничего не инициализируем
+            break;
+    }
 }
 
-ast_node_t *ast_create_command_node(char **argv, int argc) {
+//доступ через data.command
+ast_node_t *ast_create_command_node(char **argv, int argc) {// Создание узла команды с аргументами изм
     ast_node_t *node = ast_create_node(NODE_COMMAND);
     if (node == NULL) {
         return NULL;
     }
-    
-    node->argv = argv;// сохраняем указатель на массив
-    node->argc = argc;// сохраняем количество
-    
-    return node;
+    node->data.command.argv = argv;
+    node->data.command.argc = argc;
 }
 
-void ast_destroy(ast_node_t *node) {
-    if (node == NULL) {
-        return;
-    }
-    
-    ast_destroy(node->left);
-    ast_destroy(node->right);
-    
-    
-    if (node->argv != NULL) {
-        for (int i = 0; i < node->argc; i++) {
-            if (node->argv[i] != NULL) {
-                free(node->argv[i]);
+//добавила switch и доступ через union
+void ast_destroy(ast_node_t *node) {// Рекурсивное уничтожение AST дерева
+    switch (node->type) {
+        case NODE_COMMAND:
+            if (node->data.command.argv != NULL) {
+                for (int i = 0; i < node->data.command.argc; i++) {
+                    if (node->data.command.argv[i] != NULL) {
+                        free(node->data.command.argv[i]);
+                    }
+                }
+                free(node->data.command.argv);
             }
-        }
-        free(node->argv);
+            break;
+        
+        case NODE_REDIRECT:
+            if (node->data.redirect.in_file != NULL) {
+                free(node->data.redirect.in_file);
+            }
+            if (node->data.redirect.out_file != NULL) {
+                free(node->data.redirect.out_file);
+            }
+            if (node->data.redirect.err_file != NULL) {
+                free(node->data.redirect.err_file);
+            }
+            break;
+        
+        default:
+            break;
     }
-
-    
-    if (node->in_file != NULL) {
-        free(node->in_file);
-    }
-    if (node->out_file != NULL) {
-        free(node->out_file);
-    }
-    if (node->err_file != NULL) {
-        free(node->err_file);
-    }
-    
-    free(node);
 }
 
 
-static const char* node_type_to_string(node_type_t type) {
+static const char* node_type_to_string(node_type_t type) {// Вспомогательная функция для преобразования типа узла в строку
     switch (type) {
         case NODE_COMMAND: return "COMMAND";
         case NODE_PIPE: return "PIPE";
@@ -82,62 +89,51 @@ static const char* node_type_to_string(node_type_t type) {
     }
 }
 
-void ast_print(ast_node_t *node, int depth) {
-    if (node == NULL) {
-        return;
-    }
-    
-    for (int i = 0; i < depth; i++) {
-        printf("  ");
-    }
-    
-    printf("%s", node_type_to_string(node->type));
-    
-
+// все обращения через union
+void ast_print(ast_node_t *node, int depth) {// Рекурсивная печать AST для отладки изм
     switch (node->type) {
         case NODE_COMMAND:
-            if (node->argc > 0) {
+            if (node->data.command.argc > 0) {
                 printf(" [");
-                for (int i = 0; i < node->argc; i++) {
-                    printf("%s", node->argv[i]);
-                    if (i < node->argc - 1) {
+                for (int i = 0; i < node->data.command.argc; i++) {
+                    printf("%s", node->data.command.argv[i]);
+                    if (i < node->data.command.argc - 1) {
                         printf(" ");
                     }
                 }
-                printf("]");
+            printf("]");
             }
-            break;
-            
+        break;
+        
         case NODE_PIPE:
-            if (node->redirect_err) {
+            if (node->data.pipe.redirect_err) {
                 printf(" (|& stderr redirect)");
             }
             break;
-            
+        
         case NODE_REDIRECT:
+            if (node->data.redirect.in_file != NULL) {
+                printf(" < %s", node->data.redirect.in_file);
+            }
+            if (node->data.redirect.out_file != NULL) {
+                printf(" %s %s", 
+                    node->data.redirect.append ? ">>" : ">", 
+                    node->data.redirect.out_file);
+            }
+            if (node->data.redirect.err_file != NULL) {
+                printf(" %s %s", 
+                   node->data.redirect.append ? "&>>" : "&>", 
+                   node->data.redirect.err_file);
+            }
             break;
-            
-        default:
-            break;
+        
+    default:
+        break;
     }
-    
-    if (node->in_file != NULL) {
-        printf(" < %s", node->in_file);
-    }
-    if (node->out_file != NULL) {
-        printf(" %s %s", node->append ? ">>" : ">", node->out_file);
-    }
-    if (node->err_file != NULL) {
-        printf(" %s %s", node->append ? "&>>" : "&>", node->err_file);
-    }
-    
-    printf("\n");
-    
-    ast_print(node->left, depth + 1);
-    ast_print(node->right, depth + 1);
 }
 
-char **ast_clone_argv(char **argv, int argc) {
+
+char **ast_clone_argv(char **argv, int argc) {// Функция для копирования аргументов массива argv изм
     if (argv == NULL || argc <= 0) {
         return NULL;
     }
@@ -147,10 +143,10 @@ char **ast_clone_argv(char **argv, int argc) {
         return NULL;
     }
     
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++) {// Копируем каждый аргумент
         new_argv[i] = strdup(argv[i]);
         if (new_argv[i] == NULL) {
-            for (int j = 0; j < i; j++) {
+            for (int j = 0; j < i; j++) {//освобождаем уже выделенную память в случае ошибки
                 free(new_argv[j]);
             }
             free(new_argv);
@@ -161,18 +157,18 @@ char **ast_clone_argv(char **argv, int argc) {
     return new_argv;
 }
 
-int ast_is_command(ast_node_t *node, const char *cmd_name) {
-    if (node == NULL || node->type != NODE_COMMAND || node->argc == 0) {
+//доступ через data.command
+int ast_is_command(ast_node_t *node, const char *cmd_name) {// Проверка является ли узел командой с указанным именем изм
+    if (node == NULL || node->type != NODE_COMMAND || node->data.command.argc == 0) {
         return 0;
     }
-    
-    return strcmp(node->argv[0], cmd_name) == 0;
+    return strcmp(node->data.command.argv[0], cmd_name) == 0;
 }
 
-const char *ast_get_command_name(ast_node_t *node) {
-    if (node == NULL || node->type != NODE_COMMAND || node->argc == 0) {
+//доступ через data.command
+const char *ast_get_command_name(ast_node_t *node) {// Получение имени команды (первого аргумента) изм
+    if (node == NULL || node->type != NODE_COMMAND || node->data.command.argc == 0) {
         return NULL;
     }
-    
-    return node->argv[0];
+    return node->data.command.argv[0];
 }
