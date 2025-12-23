@@ -11,88 +11,74 @@
 
 #define MAX_INPUT_LENGTH 1024
 
-// ========== ПОЛУЧЕНИЕ ИНФОРМАЦИИ ДЛЯ ПРОМПТА ==========
-
-// Получаем имя пользователя из системы
-static char *get_username() {
+static char *get_username() {// Получаем имя пользователя из системы
     struct passwd *pw = getpwuid(getuid());  // Получаем информацию о пользователе
-    return pw ? strdup(pw->pw_name) : strdup("unknown");  // Копируем имя или "unknown"
+    return pw ? strdup(pw->pw_name) : strdup("unknown");
 }
 
-// Получаем имя компьютера (хоста)
-static char *get_hostname() {
-    static struct utsname uts;  // Структура для информации о системе
+
+static char *get_hostname() {// Получаем имя компьютера
+    static struct utsname uts;
     
     if (uname(&uts) == 0) {
-        return strdup(uts.nodename);  // Возвращаем имя узла
+        return strdup(uts.nodename);
     }
-    return strdup("unknown");  // Если ошибка - возвращаем "unknown"
+    return strdup("unknown");
 }
 
-// Получаем текущую директорию (сокращаем домашнюю до ~)
-static char *get_current_dir() {
-    // Получаем текущую рабочую директорию
+
+static char *get_current_dir() {// Получаем текущую директорию (сокращаем домашнюю до ~)
     char *cwd = getcwd(NULL, 0);
     if (cwd == NULL) {
-        return strdup("unknown");  // Если ошибка - возвращаем "unknown"
+        return strdup("unknown");
     }
     
-    // Получаем путь к домашней директории
     char *home = getenv("HOME");
-    
-    // Проверяем находимся ли мы в домашней директории или ее поддиректориях
+
     if (home != NULL && strncmp(cwd, home, strlen(home)) == 0) {
-        // Сокращаем путь: /home/user/documents -> ~/documents
         char *short_path = malloc(strlen(cwd) - strlen(home) + 2);
         if (short_path) {
-            short_path[0] = '~';  // Начинаем с тильды
-            strcpy(short_path + 1, cwd + strlen(home));  // Копируем остаток пути
-            free(cwd);  // Освобождаем старый путь
+            short_path[0] = '~';
+            strcpy(short_path + 1, cwd + strlen(home));
+            free(cwd);
             return short_path;
         }
     }
-    
-    // Если не в домашней директории - возвращаем полный путь
+
     return cwd;
 }
 
-// ========== ОСНОВНЫЕ ФУНКЦИИ SHELL ==========
 
-// Создаем структуру shell - выделяем память и инициализируем
-shell_t *shell_create(void) {
+shell_t *shell_create(void) {// Создаем структуру shell - выделяем память и инициализируем
     shell_t *shell = (shell_t*)malloc(sizeof(shell_t));
     if (shell == NULL) {
-        return NULL;  // Если не удалось выделить память
+        return NULL; 
     }
     
-    shell->running = 1;    // Shell активен и работает
-    shell->prompt = NULL;  // Пока не используем кастомный prompt
+    shell->running = 1;
+    shell->prompt = NULL;
     
     return shell;
 }
 
-// Освобождаем память когда shell закрывается
-void shell_destroy(shell_t *shell) {
+
+void shell_destroy(shell_t *shell) {// Освобождаем память когда shell закрывается
     if (shell != NULL) {
         if (shell->prompt != NULL) {
-            free(shell->prompt);  // Освобождаем кастомный prompt если есть
+            free(shell->prompt);
         }
-        free(shell);  // Освобождаем саму структуру
+        free(shell);
     }
 }
 
-// Печатаем приглашение командной строки: user@computer:directory$
 static void print_prompt() {
-    // Получаем информацию для prompt
     char *username = get_username();
     char *hostname = get_hostname();
     char *current_dir = get_current_dir();
     
-    // Печатаем prompt в формате: user@computer:directory$
     printf("%s@%s:%s$ ", username, hostname, current_dir);
-    fflush(stdout);  // Заставляем напечатать сразу (без буферизации)
+    fflush(stdout);
     
-    // Освобождаем память
     free(username);
     free(hostname);
     free(current_dir);
@@ -144,15 +130,13 @@ static char *read_input() {//изм
     return buffer;
 }
 
-// Обрабатываем команду: разбираем и выполняем
-static int process_command(const char *input) {
-    // Проверяем пустая ли команда
-    if (strlen(input) == 0) {
+static int process_command(const char *input) {// Обрабатываем команду: разбираем и выполняем
+    if (strlen(input) == 0) { // Проверяем пустая ли команда
         return 0;  // Пустая команда - ничего не делаем
     }
+
     
-    // ШАГ 1: Разбиваем строку на токены (слова)
-    lexer_t *lexer = lexer_create(input);
+    lexer_t *lexer = lexer_create(input);//Разбиваем строку на токены (слова)
     if (lexer == NULL) {
         fprintf(stderr, "Ошибка: не удалось создать лексер\n");
         return -1;
@@ -165,8 +149,8 @@ static int process_command(const char *input) {
         return -1;
     }
     
-    // ШАГ 2: Строим дерево команд из токенов
-    parser_t *parser = parser_create(lexer);
+    
+    parser_t *parser = parser_create(lexer);// Строим дерево команд из токенов
     if (parser == NULL) {
         fprintf(stderr, "Ошибка: не удалось создать парсер\n");
         lexer_destroy(lexer);
@@ -177,40 +161,33 @@ static int process_command(const char *input) {
     if (ast == NULL) {
         fprintf(stderr, "Ошибка: не удалось разобрать команду\n");
     } else {
-        // ШАГ 3: Выполняем команду
-        execute_ast(ast);
-        ast_destroy(ast);  // Очищаем память дерева
+        
+        execute_ast(ast);//Выполняем команду
+        ast_destroy(ast);
     }
     
-    // Очищаем все что создали
     parser_destroy(parser);
     lexer_destroy(lexer);
     
     return 0;
 }
 
-// Главный цикл shell - работает пока пользователь не выйдет
-void shell_run(shell_t *shell) {
+
+void shell_run(shell_t *shell) {// Главный цикл shell - работает пока пользователь не выйдет
     printf("Введите 'help' для списка команд, 'exit' для выхода\n\n");
 
-    // Настраиваем обработку сигналов (Ctrl+C, завершение процессов и т.д.)
     setup_signal_handlers();
     
-    // Бесконечный цикл чтения команд
     while (shell->running) {
-        // Печатаем приглашение: user@computer:directory$
         print_prompt();
-        
-        // Читаем что ввел пользователь
+
         char *input = read_input();
-        
-        // Проверяем не нажал ли пользователь Ctrl+D
+
         if (input == NULL) {
             printf("\nВыход из shell\n");
             break;  // Выход по Ctrl+D
         }
-        
-        // Проверяем специальные команды
+ 
         if (strcmp(input, "exit") == 0) {
             break;  // Выход по команде exit
         }
