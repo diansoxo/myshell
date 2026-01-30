@@ -61,9 +61,9 @@ void setup_redirections(exec_context_t *context) {
     if (context->redirect_out != NULL) {// Перенаправление вывода в файл
         int flags = O_WRONLY | O_CREAT;
         if (context->append) {
-            flags |= O_APPEND;  // Добавление в конец файла
+            flags |= O_APPEND;// Добавление в конец файла
         } else {
-            flags |= O_TRUNC;   // Перезапись файла
+            flags |= O_TRUNC;// Перезапись файла
         }
         
         int fd = open(context->redirect_out, flags, 0644);
@@ -111,8 +111,7 @@ int execute_command(ast_node_t *node, exec_context_t *context) {// Выполн�
         return 0;
     }
     
-    // Выбор функции выполнения в зависимости от типа узла
-    switch (node->type) {
+    switch (node->type) { // Выбор функции выполнения в зависимости от типа узла
         case NODE_COMMAND:
             return execute_simple_command(node, context);
         case NODE_PIPE:
@@ -145,11 +144,8 @@ int execute_simple_command(ast_node_t *node, exec_context_t *context) {//вып 
     if (is_builtin_command(node->data.command.argv[0])) {// Проверяем встроенную команду
         return handle_builtin(node->data.command.argv);
     }//Теперь перенаправления хранятся в отдельном узле NODE_REDIRECT команда больше не содержит in_file, out_file, err_file эти поля теперь в узле NODE_REDIRECT
-    
-    
-    return launch_process(node->data.command.argv, context);//запускаем внешнюю программу
+    return launch_process(node->data.command.argv, context);// Запускаем внешний процесс
 }
-
 
 int execute_pipeline(ast_node_t *node, exec_context_t *context) {// Выполняет конвейер команд
     int pipefd[2];
@@ -168,31 +164,23 @@ int execute_pipeline(ast_node_t *node, exec_context_t *context) {// Выполн
     dup2(pipefd[WRITE_END], STDOUT_FILENO);// Настраиваем вывод левой команды на пайп
     close(pipefd[WRITE_END]);
     
-    // Если нужно перенаправить stderr
-    if (redirect_stderr) {
+    if (redirect_stderr) {// Если нужно перенаправить stderr
         dup2(pipefd[WRITE_END], STDERR_FILENO);
     }
     
-    // Выполняем левую команду (ее вывод пойдет в пайп)
-    execute_command(node->left, context);
-
-    // Восстанавливаем стандартный вывод
-    dup2(saved_stdout, STDOUT_FILENO);
+    execute_command(node->left, context);// Выполняем левую команду (ее вывод пойдет в пайп)
     
-    // Настраиваем ввод правой команды из пайпа
-    dup2(pipefd[READ_END], STDIN_FILENO);
+    dup2(saved_stdout, STDOUT_FILENO);// Восстанавливаем стандартный вывод
+    
+    dup2(pipefd[READ_END], STDIN_FILENO);// Настраиваем ввод правой команды из пайпа
     close(pipefd[READ_END]);
     
-    // Выполняем правую команду (читает из пайпа)
-    int right_status = execute_command(node->right, context);
+    int right_status = execute_command(node->right, context);// Выполняем правую команду (читает из пайпа)
     
-    // Восстанавливаем стандартный ввод
-    dup2(saved_stdin, STDIN_FILENO);
+    dup2(saved_stdin, STDIN_FILENO);// Восстанавливаем стандартный ввод
     
-    // Закрываем сохраненные дескрипторы
-    close(saved_stdout);
-    close(saved_stdin);
-    
+    close(saved_stdout);// Закрываем сохраненные дескрипторы
+    close(saved_stdin);// Закрываем сохраненные дескрипторы
     return right_status;
 }
 
@@ -231,11 +219,10 @@ int execute_redirect(ast_node_t *node, exec_context_t *context) {// Выполн
 }
 
 int execute_and(ast_node_t *node, exec_context_t *context) {// Выполняет оператор И (&&)
-    // Выполняем левую команду
-    int left_status = execute_command(node->left, context);
     
-    // Если первая команда успешна, выполняем вторую
-    if (left_status == 0) {
+    int left_status = execute_command(node->left, context);// Выполняем левую команду
+    
+    if (left_status == 0) {// Если первая команда успешна, выполняем вторую
         return execute_command(node->right, context);
     }
     
@@ -243,11 +230,10 @@ int execute_and(ast_node_t *node, exec_context_t *context) {// Выполняе�
 }
 
 int execute_or(ast_node_t *node, exec_context_t *context) {// Выполняет оператор ИЛИ (||)
-    // Выполняем левую команду
-    int left_status = execute_command(node->left, context);
     
-    // Если первая команда неуспешна, выполняем вторую
-    if (left_status != 0) {
+    int left_status = execute_command(node->left, context);// Выполняем левую команду
+    
+    if (left_status != 0) {// Если первая команда неуспешна, выполняем вторую
         return execute_command(node->right, context);
     }
     
@@ -269,64 +255,55 @@ int execute_background(ast_node_t *node, exec_context_t *context) {// Выпол
 }
 
 int launch_process(char **argv, exec_context_t *context) {
-    pid_t pid = fork();  // Создаем новый процесс
+    pid_t pid = fork();//Создаем новый процесс
     
-    if (pid == 0) {
-        // Это дочерний процесс (где выполняется команда)
+    if (pid == 0) {// Это дочерний процесс (где выполняется команда)
         
-        // Настраиваем группу процессов
-        if (context->background) {
-            setpgid(0, 0);  // Создаем новую группу для фоновых
+        if (context->background) {// Настраиваем группу процессов
+            setpgid(0, 0);//Создаем новую группу для фоновых
         }
         
-        // Восстанавливаем стандартные обработчики сигналов
-        signal(SIGINT, SIG_DFL);
+        signal(SIGINT, SIG_DFL);// Восстанавливаем стандартные обработчики сигналов
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGTTIN, SIG_DFL);
         signal(SIGTTOU, SIG_DFL);
         signal(SIGCHLD, SIG_DFL);
         
-        // Настраиваем перенаправления
+        
         setup_redirections(context);
-        
-        // Заменяем этот процесс на новую программу
         execvp(argv[0], argv);
-        
-        // Если дошли сюда - значит execvp не сработал
-        perror("execvp");
+    
+        perror("execvp");// Если дошли сюда - значит execvp не сработал
         exit(EXIT_FAILURE);
         
     } else if (pid < 0) {
-        // Ошибка при создании процесса
-        perror("fork");
+        
+        perror("fork");// Ошибка при создании процесса
         return -1;
     } else {
-        // Это родительский процесс (наш shell)
-        if (context->background) {
-            // Фоновая задача
-            setpgid(pid, pid);
+        if (context->background) {// Это родительский процесс (наш shell)
+            setpgid(pid, pid);// Фоновая задача
             
-            // Добавляем в список задач
-            job_t *job = create_job(pid, argv[0]);
+            
+            job_t *job = create_job(pid, argv[0]);// Добавляем в список задач
             add_job(job);
             printf("[%d] %d\n", job->job_id, pid);
             return 0;
         } else {
-            // Обычная задача - ждем завершения
-            setpgid(pid, pid);
+            setpgid(pid, pid);// Обычная задача - ждем завершения
             
             int status;
-            waitpid(pid, &status, WUNTRACED);  // Ждем завершения
+            waitpid(pid, &status, WUNTRACED);//Ждем завершения
             
-            // Обрабатываем результат
-            if (WIFEXITED(status)) {
-                return WEXITSTATUS(status);  // Нормальное завершение
+            
+            if (WIFEXITED(status)) {// Обрабатываем результат
+                return WEXITSTATUS(status);//Нормальное завершение
             } else if (WIFSIGNALED(status)) {
-                return 128 + WTERMSIG(status);  // Завершение по сигналу
+                return 128 + WTERMSIG(status);//Завершение по сигналу
             } else if (WIFSTOPPED(status)) {
-                // Задача остановлена - добавляем в список
-                job_t *job = create_job(pid, argv[0]);
+                
+                job_t *job = create_job(pid, argv[0]);// Задача остановлена - добавляем в список
                 job->state = JOB_STOPPED;
                 add_job(job);
                 printf("[%d] Stopped %s\n", job->job_id, argv[0]);
@@ -340,15 +317,12 @@ int launch_process(char **argv, exec_context_t *context) {
 
 void setup_signal_handlers(void) {// Настраивает обработчики сигналов для shell
     struct sigaction sa;
-    
-    // Настраиваем обработчик SIGCHLD
-    sa.sa_handler = sigchld_handler;
+    sa.sa_handler = sigchld_handler;// Настраиваем обработчик SIGCHLD
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     sigaction(SIGCHLD, &sa, NULL);
     
-    // Игнорируем сигналы в shell
-    signal(SIGINT, SIG_IGN);
+    signal(SIGINT, SIG_IGN);// Игнорируем сигналы в shell
     signal(SIGQUIT, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);
 }
