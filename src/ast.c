@@ -31,6 +31,7 @@ ast_node_t *ast_create_node(node_type_t type) {//создание узла дл�
         default:// Для остальных типов ничего не инициализируем
             break;
     }
+    return node;
 }
 
 //доступ через data.command
@@ -41,10 +42,13 @@ ast_node_t *ast_create_command_node(char **argv, int argc) {// Создание 
     }
     node->data.command.argv = argv;
     node->data.command.argc = argc;
+    return node;
 }
-
 //добавила switch и доступ через union
 void ast_destroy(ast_node_t *node) {// Рекурсивное уничтожение AST дерева
+    if (node == NULL) {
+        return;
+    }
     switch (node->type) {
         case NODE_COMMAND:
             if (node->data.command.argv != NULL) {
@@ -72,27 +76,31 @@ void ast_destroy(ast_node_t *node) {// Рекурсивное уничтожен
         default:
             break;
     }
-}
-
-
-static const char* node_type_to_string(node_type_t type) {// Вспомогательная функция для преобразования типа узла в строку
-    switch (type) {
-        case NODE_COMMAND: return "COMMAND";
-        case NODE_PIPE: return "PIPE";
-        case NODE_REDIRECT: return "REDIRECT";
-        case NODE_AND: return "AND";
-        case NODE_OR: return "OR";
-        case NODE_SEMICOLON: return "SEMICOLON";
-        case NODE_BACKGROUND: return "BACKGROUND";
-        case NODE_SUBSHELL: return "SUBSHELL";
-        default: return "UNKNOWN";
+    if (node->left != NULL) {
+        ast_destroy(node->left);
     }
+    if (node->right != NULL) {
+        ast_destroy(node->right);
+    }
+    free(node);
 }
+
 
 // все обращения через union
 void ast_print(ast_node_t *node, int depth) {// Рекурсивная печать AST для отладки изм
+    if (node == NULL) {
+        return;
+    }
+    
+    // Печатаем отступ для визуализации глубины дерева
+    for (int i = 0; i < depth; i++) {  // FIX: Now using depth parameter
+        printf("  ");
+    }
+    
+    printf("Node type: ");
     switch (node->type) {
         case NODE_COMMAND:
+            printf("COMMAND");
             if (node->data.command.argc > 0) {
                 printf(" [");
                 for (int i = 0; i < node->data.command.argc; i++) {
@@ -101,17 +109,19 @@ void ast_print(ast_node_t *node, int depth) {// Рекурсивная печа�
                         printf(" ");
                     }
                 }
-            printf("]");
+                printf("]");
             }
-        break;
+            break;
         
         case NODE_PIPE:
+            printf("PIPE");
             if (node->data.pipe.redirect_err) {
                 printf(" (|& stderr redirect)");
             }
             break;
         
         case NODE_REDIRECT:
+            printf("REDIRECT");
             if (node->data.redirect.in_file != NULL) {
                 printf(" < %s", node->data.redirect.in_file);
             }
@@ -127,8 +137,34 @@ void ast_print(ast_node_t *node, int depth) {// Рекурсивная печа�
             }
             break;
         
-    default:
-        break;
+        case NODE_AND:
+            printf("AND (&&)");
+            break;
+        case NODE_OR:
+            printf("OR (||)");
+            break;
+        case NODE_SEMICOLON:
+            printf("SEMICOLON (;)");
+            break;
+        case NODE_BACKGROUND:
+            printf("BACKGROUND (&)");
+            break;
+        case NODE_SUBSHELL:
+            printf("SUBSHELL");
+            break;
+        default:
+            printf("UNKNOWN");
+            break;
+    }
+    
+    printf("\n");
+    
+    // Рекурсивно печатаем дочерние узлы
+    if (node->left != NULL) {
+        ast_print(node->left, depth + 1);
+    }
+    if (node->right != NULL) {
+        ast_print(node->right, depth + 1);
     }
 }
 
