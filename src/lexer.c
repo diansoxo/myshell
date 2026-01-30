@@ -18,6 +18,7 @@ lexer_t *lexer_create(const char *input) {
     
     return lexer;
 }
+
 void lexer_destroy(lexer_t *lexer) {
     if (lexer == NULL) return;
 
@@ -111,14 +112,27 @@ char *handle_quotes(lexer_t *lexer, char quote_type) {
         return NULL;
     }
     
-    strncpy(result, lexer->input + start_pos, len);
-    result[len] = '\0';
+    int src_pos = start_pos;
+    int dst_pos = 0;
     
-    lexer->position++;
+    // Копируем с обработкой экранирования для двойных кавычек
+    while (src_pos < lexer->position && dst_pos < len) {
+        if (quote_type == '"' && lexer->input[src_pos] == '\\') {
+            src_pos++; // Пропускаем обратный слеш
+            if (src_pos < lexer->position) {
+                result[dst_pos++] = lexer->input[src_pos++];
+            }
+        } else {
+            result[dst_pos++] = lexer->input[src_pos++];
+        }
+    }
+    
+    result[dst_pos] = '\0';
+    
+    lexer->position++; // Пропускаем закрывающую кавычку
     
     return result;
 }
-//////////////////
 
 char *handle_word(lexer_t *lexer) {
     int start_pos = lexer->position;
@@ -127,7 +141,9 @@ char *handle_word(lexer_t *lexer) {
     while (end_pos < lexer->length) {
         char current = lexer->input[end_pos];
         
-        if (is_whitespace(current) || is_special_char(current)) {
+        // Останавливаемся на пробелах, спецсимволах или кавычках
+        if (is_whitespace(current) || is_special_char(current) || 
+            current == '\'' || current == '"') {
             break;
         }
         
@@ -185,8 +201,87 @@ char *handle_word(lexer_t *lexer) {
     lexer->position = end_pos;
     return result;
 }
-//////////
 
+// Обработка составного слова (может содержать кавычки и обычный текст)
+static char *handle_compound_word(lexer_t *lexer) {
+    char *buffer = NULL;
+    int buffer_len = 0;
+    
+    while (lexer->position < lexer->length) {
+        char current = lexer->input[lexer->position];
+        
+        // Если встретили пробел или спецсимвол - заканчиваем
+        if (is_whitespace(current) || is_special_char(current)) {
+            break;
+        }
+        
+        // Если встретили кавычку - обрабатываем как quoted string
+        if (current == '\'' || current == '"') {
+            char *quoted = handle_quotes(lexer, current);
+            if (quoted == NULL) {
+                free(buffer);
+                return NULL;
+            }
+            
+            // Расширяем буфер если нужно
+            int quoted_len = strlen(quoted);
+            int new_len = buffer_len + quoted_len;
+            
+            if (buffer == NULL) {
+                buffer = (char*)malloc(new_len + 1);
+                if (buffer == NULL) {
+                    free(quoted);
+                    return NULL;
+                }
+                buffer_len = 0;
+            } else {
+                char *new_buffer = (char*)realloc(buffer, new_len + 1);
+                if (new_buffer == NULL) {
+                    free(buffer);
+                    free(quoted);
+                    return NULL;
+                }
+                buffer = new_buffer;
+            }
+            
+            strcpy(buffer + buffer_len, quoted);
+            buffer_len = new_len;
+            free(quoted);
+        } else {
+            // Обрабатываем обычное слово до следующей кавычки или пробела
+            char *word = handle_word(lexer);
+            if (word == NULL) {
+                break;
+            }
+            
+            int word_len = strlen(word);
+            int new_len = buffer_len + word_len;
+            
+            if (buffer == NULL) {
+                buffer = (char*)malloc(new_len + 1);
+                if (buffer == NULL) {
+                    free(word);
+                    return NULL;
+                }
+                buffer_len = 0;
+            } else {
+                char *new_buffer = (char*)realloc(buffer, new_len + 1);
+                if (new_buffer == NULL) {
+                    free(buffer);
+                    free(word);
+                    return NULL;
+                }
+                buffer = new_buffer;
+            }
+            
+            strcpy(buffer + buffer_len, word);
+            buffer_len = new_len;
+            free(word);
+        }
+    }
+    
+    return buffer;
+}
 
 token_t *lexer_tokenize(lexer_t *lexer) {
     if (lexer == NULL) {
@@ -207,14 +302,7 @@ token_t *lexer_tokenize(lexer_t *lexer) {
             break;
         }
         
-        if (current == '\'' || current == '"') {
-            char *value = handle_quotes(lexer, current);
-            if (value != NULL) {
-                add_token(lexer, TOKEN_WORD, value);
-            }
-            continue;
-        }
-        //спец символы
+        //спец символы - двухсимвольные операторы
         if (current == '|' && lexer->position + 1 < lexer->length && 
             lexer->input[lexer->position + 1] == '|') {
             add_token(lexer, TOKEN_OR, strdup("||"));
@@ -256,6 +344,7 @@ token_t *lexer_tokenize(lexer_t *lexer) {
             continue;
         }
         
+        // Односимвольные спецсимволы
         switch (current) {
             case '|':
                 add_token(lexer, TOKEN_PIPE, strdup("|"));
@@ -293,12 +382,18 @@ token_t *lexer_tokenize(lexer_t *lexer) {
                 continue;
         }
         
-        char *word_value = handle_word(lexer);
-        if (word_value != NULL) {
-            add_token(lexer, TOKEN_WORD, word_value);
-        } else {
-            lexer->position++;
+        // Обработка слов (включая составные с кавычками)
+        if (current == '\'' || current == '"' || 
+            (!is_special_char(current) && !is_whitespace(current))) {
+            char *word_value = handle_compound_word(lexer);
+            if (word_value != NULL) {
+                add_token(lexer, TOKEN_WORD, word_value);
+            }
+            continue;
         }
+        
+        // Если ничего не подошло, пропускаем символ
+        lexer->position++;
     }
     
     add_token(lexer, TOKEN_EOF, NULL);
