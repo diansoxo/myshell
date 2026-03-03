@@ -1,6 +1,9 @@
 #ifndef SHELL_H
 #define SHELL_H
 
+#define MAX_HISTORY 100// НОВОЕ: Константы для истории
+#define MAX_LINE_LENGTH 1024
+
 typedef struct history_entry {// Структура для истории команд
     char *command;
     struct history_entry *next;
@@ -17,7 +20,7 @@ typedef struct {// Структура shell
     int history_count;
     char *history_file;
     
-    // Для редактирования
+    // ДОБАВИЛА Для редактирования командной строки
     char line_buffer[MAX_LINE_LENGTH];
     int cursor_pos;
     int line_len;
